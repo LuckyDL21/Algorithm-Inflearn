@@ -201,3 +201,127 @@ def solution(prices):
 이중 루프처럼 보이는 코드의 실제 시간복잡도를 판단하는 핵심이었다.
 단속카메라와 마찬가지로, 로직의 정답 여부와 시간복잡도는 별개의 문제라는
 걸 다시 확인.
+
+---
+---
+
+# 프로그래머스 - 이중우선순위큐 (Level 3)
+
+문제: https://school.programmers.co.kr/learn/courses/30/lessons/42628
+
+연산 목록(`operations`)이 주어질 때, `I num`(삽입), `D 1`(최댓값 삭제),
+`D -1`(최솟값 삭제)을 순서대로 처리한 뒤 최종적으로 남은 원소들의
+**[최댓값, 최솟값]**을 구하는 문제. 힙(우선순위큐) 두 개를 동시에
+유지해야 하는 이중 우선순위큐 유형.
+
+소요시간: 22분
+
+---
+
+## 방법 1 — 리스트 + max()/min()/remove() (첫 시도)
+
+### 아이디어
+- 원소를 그냥 리스트에 담아두고, 삭제 연산이 들어올 때마다
+  `max()`/`min()`으로 값을 찾아 `remove()`로 제거.
+
+### 코드
+```python
+def solution(operations):
+    element_list = []
+
+    for strings in operations:
+        alpha, num = strings.split(" ")
+        if alpha == "I":
+            element_list.append(int(num))
+        elif alpha == "D" and num == "1" and len(element_list) != 0:
+            element_list.remove(max(element_list))
+        elif alpha == "D" and num == "-1" and len(element_list) != 0:
+            element_list.remove(min(element_list))
+
+    if len(element_list) == 0:
+        return [0, 0]
+    else:
+        return [max(element_list), min(element_list)]
+```
+
+### 문제점
+- 정확도는 100점이지만 매 삭제 연산마다 `max()`/`min()`이 O(n),
+  `remove()`도 O(n)이라 **최악의 경우 O(n²)**.
+- operations 최대 1,000,000개 제약을 고려하면 시간 초과(TLE) 위험.
+
+---
+
+## 방법 2 — heapq 이중 + lazy deletion (최종 정답)
+
+### 아이디어
+- 최소힙(`min_heapq`)과 최대힙(`max_heapq`, 부호 반전 저장)을 동시에 유지해서
+  각 삭제 연산이 O(log n)에 끝나도록 함.
+- 문제는 두 힙이 서로의 원소를 모른다는 것 — 한쪽 힙에서 pop한 원소가
+  다른 쪽 힙엔 여전히 남아있음. 이를 `delete_set`(삭제된 인덱스 집합)으로
+  표시해두고, 힙에서 값을 꺼낼 때 top이 이미 삭제된 인덱스면 계속
+  `heappop`으로 걷어내는 **lazy deletion**으로 해결.
+- 원소를 `(값, 인덱스)` 튜플로 저장해서 delete_set과 값을 매칭.
+
+### 코드
+```python
+import heapq
+
+def solution(operations):
+    min_heapq = []
+    max_heapq = []
+    delete_set = set()
+
+    for idx, values in enumerate(operations):
+        alpha, num = values.split(" ")
+        num = int(num)
+
+        if alpha == "I":
+            heapq.heappush(min_heapq, (num, idx))
+            heapq.heappush(max_heapq, (-num, idx))
+        elif alpha == "D" and num == 1:
+            while max_heapq and max_heapq[0][1] in delete_set:
+                heapq.heappop(max_heapq)
+            if max_heapq:
+                _, id = heapq.heappop(max_heapq)
+                delete_set.add(id)
+        elif alpha == "D" and num == -1:
+            while min_heapq and min_heapq[0][1] in delete_set:
+                heapq.heappop(min_heapq)
+            if min_heapq:
+                _, id = heapq.heappop(min_heapq)
+                delete_set.add(id)
+
+    while max_heapq and max_heapq[0][1] in delete_set:
+        heapq.heappop(max_heapq)
+    while min_heapq and min_heapq[0][1] in delete_set:
+        heapq.heappop(min_heapq)
+
+    if not max_heapq or not min_heapq:
+        return [0, 0]
+
+    max_value, _ = heapq.heappop(max_heapq)
+    min_value, _ = heapq.heappop(min_heapq)
+
+    return [-max_value, min_value]
+```
+
+### 왜 O(n log n)인가 (상각 분석)
+- 각 원소는 두 힙에 각각 딱 한 번 push되고, 딱 한 번 pop됨(직접 삭제되거나
+  lazy deletion으로 걷어내지거나).
+- `while` 안에서 반복적으로 pop하는 것처럼 보이지만, 전체 실행에 걸쳐
+  pop 총 횟수는 push 총 횟수(n)를 못 넘으므로 상각 O(n log n).
+
+---
+
+## 비교
+
+| | 방법 1 (리스트 + max/min/remove) | 방법 2 (heapq 이중 + lazy deletion) |
+|---|---|---|
+| 삭제 연산 1회 | O(n) | O(log n) (상각) |
+| 전체 시간복잡도 | **O(n²)** | **O(n log n)** |
+| operations=1,000,000일 때 | TLE 위험 | 안전 |
+
+**결론**: 최댓값/최솟값을 "그때그때 스캔"하는 대신 힙 두 개를 유지하면
+삭제가 O(log n)으로 줄지만, 두 힙이 서로의 삭제를 모른다는 동기화 문제가
+새로 생긴다. `delete_set` + lazy deletion으로 "진짜 삭제는 미루고
+꺼낼 때 걸러낸다"는 접근이 핵심이었다.
